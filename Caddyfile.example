@@ -1,0 +1,36 @@
+# Example Caddyfile using the Bluecat DNS provider
+# This demonstrates how to configure the Bluecat module for ACME DNS challenges
+
+# Global configuration
+{
+	# Enable ACME DNS challenge globally
+	acme_dns bluecat {
+		server_url {env.BLUECAT_SERVER_URL}
+		username {env.BLUECAT_USERNAME}
+		password {env.BLUECAT_PASSWORD}
+		# Optional: specify configuration and view names
+		# configuration_name {env.BLUECAT_CONFIGURATION_NAME}
+		# view_name {env.BLUECAT_VIEW_NAME}
+	}
+}
+
+# Example site configuration
+example.com {
+	# Enable TLS with automatic certificate management
+	# The DNS challenge will use the Bluecat provider configured above
+	
+	respond "Hello from Caddy with Bluecat DNS!"
+}
+
+# Alternative: Per-site configuration
+*.example.org {
+	tls {
+		dns bluecat {
+			server_url {env.BLUECAT_SERVER_URL}
+			username {env.BLUECAT_USERNAME}
+			password {env.BLUECAT_PASSWORD}
+		}
+	}
+	
+	respond "Wildcard certificate using Bluecat DNS!"
+}

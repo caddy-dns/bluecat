@@ -1,0 +1,52 @@
+{
+	"apps": {
+		"http": {
+			"servers": {
+				"example": {
+					"listen": [":443"],
+					"routes": [
+						{
+							"match": [
+								{
+									"host": ["example.com", "www.example.com"]
+								}
+							],
+							"handle": [
+								{
+									"handler": "static_response",
+									"body": "Hello from Caddy with Bluecat DNS!"
+								}
+							]
+						}
+					]
+				}
+			}
+		},
+		"tls": {
+			"automation": {
+				"policies": [
+					{
+						"subjects": ["example.com", "www.example.com"],
+						"issuers": [
+							{
+								"module": "acme",
+								"challenges": {
+									"dns": {
+										"provider": {
+											"name": "bluecat",
+											"server_url": "{env.BLUECAT_SERVER_URL}",
+											"username": "{env.BLUECAT_USERNAME}",
+											"password": "{env.BLUECAT_PASSWORD}",
+											"configuration_name": "{env.BLUECAT_CONFIGURATION_NAME}",
+											"view_name": "{env.BLUECAT_VIEW_NAME}"
+										}
+									}
+								}
+							}
+						]
+					}
+				]
+			}
+		}
+	}
+}
