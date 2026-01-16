@@ -66,8 +66,8 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/pty v1.1.3/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
-github.com/libdns/bluecat v0.1.2 h1:x1Tltz1moIRMu5Pky2XiiDLqDzwKsrK9qVykj5hcBsI=
-github.com/libdns/bluecat v0.1.2/go.mod h1:hSGMyzn7oNJCNxDFZZtN7bP6RqqUd+La7EZJ8Qzf0Wk=
+github.com/libdns/bluecat v0.1.3 h1:YwDOPvlNWYb/gCRT02yg9KYzLK6+7PsN6pBpDbicNMg=
+github.com/libdns/bluecat v0.1.3/go.mod h1:hSGMyzn7oNJCNxDFZZtN7bP6RqqUd+La7EZJ8Qzf0Wk=
 github.com/libdns/libdns v1.1.1 h1:wPrHrXILoSHKWJKGd0EiAVmiJbFShguILTg9leS/P/U=
 github.com/libdns/libdns v1.1.1/go.mod h1:4Bj9+5CQiNMVGf87wjX4CY3HQJypUHRuLvlsfsZqLWQ=
 github.com/lunixbochs/vtclean v1.0.0/go.mod h1:pHhQNgMf3btfWnGBVipUOjRYhoOsdGqdm/+2c2E2WMI=
