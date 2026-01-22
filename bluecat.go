@@ -2,7 +2,6 @@ package bluecat
 
 import (
 	"context"
-	"fmt"
 	"net/netip"
 
 	"github.com/caddyserver/caddy/v2"
@@ -149,23 +148,7 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 	for i, rec := range records {
 		converted[i] = convertToConcreteType(rec)
 	}
-	created, err := p.provider.AppendRecords(ctx, zone, converted)
-	if err == nil {
-		fmt.Printf("WRAPPER DEBUG: AppendRecords returned %d records\n", len(created))
-		for i, rec := range created {
-			var provData interface{}
-			switch r := rec.(type) {
-			case libdns.TXT:
-				provData = r.ProviderData
-			case libdns.Address:
-				provData = r.ProviderData
-			case libdns.CNAME:
-				provData = r.ProviderData
-			}
-			fmt.Printf("WRAPPER DEBUG: Record %d: Type=%T, ProviderData=%v\n", i, rec, provData)
-		}
-	}
-	return created, err
+	return p.provider.AppendRecords(ctx, zone, converted)
 }
 
 // convertToConcreteType converts a generic libdns.Record to its concrete type
@@ -218,45 +201,7 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 
 // DeleteRecords deletes the specified records from the zone.
 func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	// WORKAROUND: Certmagic loses ProviderData when storing records (converts to libdns.RR)
-	// We need to fetch current records from Bluecat and match by name/type to find the IDs
-	fmt.Printf("WRAPPER DEBUG: DeleteRecords called with %d records\n", len(records))
-	for i, rec := range records {
-		fmt.Printf("WRAPPER DEBUG: Record %d to delete: Type=%T, Name=%s\n", i, rec, rec.RR().Name)
-	}
-	
-	// Get all current records from the zone
-	existingRecords, err := p.provider.GetRecords(ctx, zone)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get existing records for deletion: %w", err)
-	}
-	
-	fmt.Printf("WRAPPER DEBUG: Got %d existing records from zone\n", len(existingRecords))
-	
-	// Match the records to delete with existing records to get ProviderData
-	var recordsToDelete []libdns.Record
-	for _, rec := range records {
-		rr := rec.RR()
-		// Find matching record in existing records
-		for _, existing := range existingRecords {
-			existingRR := existing.RR()
-			if existingRR.Name == rr.Name && existingRR.Type == rr.Type && existingRR.Data == rr.Data {
-				// Found a match - use the existing record (which has ProviderData)
-				fmt.Printf("WRAPPER DEBUG: Matched record %s (type %s) - adding to delete list\n", rr.Name, rr.Type)
-				recordsToDelete = append(recordsToDelete, existing)
-				break
-			}
-		}
-	}
-	
-	fmt.Printf("WRAPPER DEBUG: Deleting %d matched records\n", len(recordsToDelete))
-	
-	if len(recordsToDelete) == 0 {
-		// No matches found - this might be okay if records were already deleted
-		return records, nil
-	}
-	
-	return p.provider.DeleteRecords(ctx, zone, recordsToDelete)
+	return p.provider.DeleteRecords(ctx, zone, records)
 }
 
 // Interface guards

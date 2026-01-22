@@ -49,6 +49,8 @@ or with the Caddyfile:
 ```caddyfile
 # one site
 tls {
+	# Needed for spit-horizon DNS
+	resolvers 1.1.1.1 
 	dns bluecat {
 		server_url {env.BLUECAT_SERVER_URL}
 		username {env.BLUECAT_USERNAME}
