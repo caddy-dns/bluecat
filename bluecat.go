@@ -2,7 +2,10 @@ package bluecat
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
+	"reflect"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
@@ -22,6 +25,8 @@ type Provider struct {
 	ConfigurationName string `json:"configuration_name,omitempty"`
 	// ViewName is the name of the view to use
 	ViewName string `json:"view_name,omitempty"`
+	// DeploymentBatchWindow coalesces same-zone quick deploys using a Caddy duration string
+	DeploymentBatchWindow string `json:"deployment_batch_window,omitempty"`
 
 	provider *bluecat.Provider
 }
@@ -51,6 +56,12 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 	p.Password = repl.ReplaceAll(p.Password, "")
 	p.ConfigurationName = repl.ReplaceAll(p.ConfigurationName, "")
 	p.ViewName = repl.ReplaceAll(p.ViewName, "")
+	p.DeploymentBatchWindow = repl.ReplaceAll(p.DeploymentBatchWindow, "")
+
+	deploymentBatchWindow, err := parseDeploymentBatchWindow(p.DeploymentBatchWindow)
+	if err != nil {
+		return err
+	}
 
 	// Initialize the embedded provider with the configuration
 	p.provider = &bluecat.Provider{
@@ -59,6 +70,9 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 		Password:          p.Password,
 		ConfigurationName: p.ConfigurationName,
 		ViewName:          p.ViewName,
+	}
+	if err := setDeploymentBatchWindow(p.provider, deploymentBatchWindow); err != nil {
+		return err
 	}
 
 	logger.Info("Bluecat DNS provider provisioned")
@@ -74,6 +88,7 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 //	    password <password>
 //	    configuration_name <name>  // optional
 //	    view_name <name>           // optional
+//	    deployment_batch_window <duration> // optional
 //	}
 func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	for d.Next() {
@@ -117,6 +132,13 @@ func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if d.NextArg() {
 					return d.ArgErr()
 				}
+			case "deployment_batch_window":
+				if d.NextArg() {
+					p.DeploymentBatchWindow = d.Val()
+				}
+				if d.NextArg() {
+					return d.ArgErr()
+				}
 			default:
 				return d.Errf("unrecognized subdirective '%s'", d.Val())
 			}
@@ -133,6 +155,39 @@ func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		return d.Err("missing password")
 	}
 
+	return nil
+}
+
+func parseDeploymentBatchWindow(raw string) (time.Duration, error) {
+	if raw == "" {
+		return 0, nil
+	}
+
+	window, err := caddy.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid deployment_batch_window %q: %w", raw, err)
+	}
+
+	return window, nil
+}
+
+func setDeploymentBatchWindow(provider *bluecat.Provider, window time.Duration) error {
+	if window == 0 {
+		return nil
+	}
+
+	value := reflect.ValueOf(provider).Elem().FieldByName("DeploymentBatchWindow")
+	if !value.IsValid() {
+		return fmt.Errorf("deployment_batch_window requires github.com/libdns/bluecat with DeploymentBatchWindow support")
+	}
+	if !value.CanSet() {
+		return fmt.Errorf("deployment_batch_window is not settable on github.com/libdns/bluecat provider")
+	}
+	if value.Type() != reflect.TypeOf(time.Duration(0)) {
+		return fmt.Errorf("deployment_batch_window has incompatible type %s on github.com/libdns/bluecat provider", value.Type())
+	}
+
+	value.SetInt(int64(window))
 	return nil
 }
 
@@ -165,7 +220,7 @@ func convertToConcreteType(rec libdns.Record) libdns.Record {
 	// Note: libdns.RR doesn't have ProviderData field, so we can't preserve it
 	// This is a limitation of how certmagic stores/returns records
 	rr := rec.RR()
-	
+
 	switch rr.Type {
 	case "TXT":
 		return libdns.TXT{
