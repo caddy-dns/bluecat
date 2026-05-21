@@ -2,9 +2,7 @@ package bluecat
 
 import (
 	"context"
-	"fmt"
 	"net/netip"
-	"reflect"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -25,8 +23,15 @@ type Provider struct {
 	ConfigurationName string `json:"configuration_name,omitempty"`
 	// ViewName is the name of the view to use
 	ViewName string `json:"view_name,omitempty"`
-	// DeploymentBatchWindow coalesces same-zone quick deploys using a Caddy duration string
-	DeploymentBatchWindow string `json:"deployment_batch_window,omitempty"`
+	// DeployDelay controls how long to wait after the last DNS record write
+	// before issuing a QuickDeploy to Bluecat. Writes are debounced per zone —
+	// the deploy fires only once no new writes arrive within this window.
+	// This prevents Bluecat timeouts when multiple ACME DNS-01 challenges are
+	// being solved concurrently.
+	//
+	// Accepts a Go duration string, e.g. "10s", "30s". Defaults to 10 seconds
+	// when unset. Set to "-1" to disable automatic deployment entirely.
+	DeployDelay caddy.Duration `json:"deploy_delay,omitempty"`
 
 	provider *bluecat.Provider
 }
@@ -56,12 +61,6 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 	p.Password = repl.ReplaceAll(p.Password, "")
 	p.ConfigurationName = repl.ReplaceAll(p.ConfigurationName, "")
 	p.ViewName = repl.ReplaceAll(p.ViewName, "")
-	p.DeploymentBatchWindow = repl.ReplaceAll(p.DeploymentBatchWindow, "")
-
-	deploymentBatchWindow, err := parseDeploymentBatchWindow(p.DeploymentBatchWindow)
-	if err != nil {
-		return err
-	}
 
 	// Initialize the embedded provider with the configuration
 	p.provider = &bluecat.Provider{
@@ -70,9 +69,7 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 		Password:          p.Password,
 		ConfigurationName: p.ConfigurationName,
 		ViewName:          p.ViewName,
-	}
-	if err := setDeploymentBatchWindow(p.provider, deploymentBatchWindow); err != nil {
-		return err
+		DeployDelay:       time.Duration(p.DeployDelay),
 	}
 
 	logger.Info("Bluecat DNS provider provisioned")
@@ -88,7 +85,7 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 //	    password <password>
 //	    configuration_name <name>  // optional
 //	    view_name <name>           // optional
-//	    deployment_batch_window <duration> // optional
+//	    deploy_delay <duration>    // optional, e.g. "10s" (default), "30s"
 //	}
 func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	for d.Next() {
@@ -132,9 +129,13 @@ func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if d.NextArg() {
 					return d.ArgErr()
 				}
-			case "deployment_batch_window":
+			case "deploy_delay":
 				if d.NextArg() {
-					p.DeploymentBatchWindow = d.Val()
+					dur, err := caddy.ParseDuration(d.Val())
+					if err != nil {
+						return d.Errf("invalid deploy_delay duration %q: %v", d.Val(), err)
+					}
+					p.DeployDelay = caddy.Duration(dur)
 				}
 				if d.NextArg() {
 					return d.ArgErr()
@@ -155,39 +156,6 @@ func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		return d.Err("missing password")
 	}
 
-	return nil
-}
-
-func parseDeploymentBatchWindow(raw string) (time.Duration, error) {
-	if raw == "" {
-		return 0, nil
-	}
-
-	window, err := caddy.ParseDuration(raw)
-	if err != nil {
-		return 0, fmt.Errorf("invalid deployment_batch_window %q: %w", raw, err)
-	}
-
-	return window, nil
-}
-
-func setDeploymentBatchWindow(provider *bluecat.Provider, window time.Duration) error {
-	if window == 0 {
-		return nil
-	}
-
-	value := reflect.ValueOf(provider).Elem().FieldByName("DeploymentBatchWindow")
-	if !value.IsValid() {
-		return fmt.Errorf("deployment_batch_window requires github.com/libdns/bluecat with DeploymentBatchWindow support")
-	}
-	if !value.CanSet() {
-		return fmt.Errorf("deployment_batch_window is not settable on github.com/libdns/bluecat provider")
-	}
-	if value.Type() != reflect.TypeOf(time.Duration(0)) {
-		return fmt.Errorf("deployment_batch_window has incompatible type %s on github.com/libdns/bluecat provider", value.Type())
-	}
-
-	value.SetInt(int64(window))
 	return nil
 }
 
