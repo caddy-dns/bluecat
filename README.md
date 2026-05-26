@@ -25,7 +25,7 @@ To use this module for the ACME DNS challenge, [configure the ACME issuer in you
 				"password": "{env.BLUECAT_PASSWORD}",
 				"configuration_name": "{env.BLUECAT_CONFIGURATION_NAME}",
 				"view_name": "{env.BLUECAT_VIEW_NAME}",
-				"deployment_batch_window": "5s"
+				"deploy_delay: "5s"
 			}
 		}
 	}
@@ -43,7 +43,7 @@ or with the Caddyfile:
 		password {env.BLUECAT_PASSWORD}
 		configuration_name {env.BLUECAT_CONFIGURATION_NAME}  # optional
 		view_name {env.BLUECAT_VIEW_NAME}                    # optional
-		deployment_batch_window 5s                           # optional
+		deploy_delay 5s                           # optional
 	}
 }
 ```
@@ -59,7 +59,7 @@ tls {
 		password {env.BLUECAT_PASSWORD}
 		configuration_name {env.BLUECAT_CONFIGURATION_NAME}  # optional
 		view_name {env.BLUECAT_VIEW_NAME}                    # optional
-		deployment_batch_window 5s                           # optional
+		deploy_delay 5s                           # optional
 	}
 }
 ```
@@ -71,6 +71,6 @@ tls {
 - **password** (required): Password for authenticating with the Bluecat API
 - **configuration_name** (optional): Bluecat configuration name (defaults to first available)
 - **view_name** (optional): Bluecat view name (defaults to first available)
-- **deployment_batch_window** (optional): Caddy duration string used to batch same-zone quick deploys before one Bluecat deploy is sent, for example `5s`
+- **deploy_delay_** (optional): Caddy duration string used to batch same-zone quick deploys before one Bluecat deploy is sent, for example `5s`
 
 If you'd rather directly add the config items you can forgo the .env file.
