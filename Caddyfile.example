@@ -33,7 +33,7 @@ example.com {
 			server_url {env.BLUECAT_SERVER_URL}
 			username {env.BLUECAT_USERNAME}
 			password {env.BLUECAT_PASSWORD}
-			# deploy_delay 10s
+			deploy_delay 10s
 		}
 	}
 	
