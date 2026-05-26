@@ -3,6 +3,7 @@ package bluecat
 import (
 	"context"
 	"net/netip"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
@@ -22,6 +23,15 @@ type Provider struct {
 	ConfigurationName string `json:"configuration_name,omitempty"`
 	// ViewName is the name of the view to use
 	ViewName string `json:"view_name,omitempty"`
+	// DeployDelay controls how long to wait after the last DNS record write
+	// before issuing a QuickDeploy to Bluecat. Writes are debounced per zone —
+	// the deploy fires only once no new writes arrive within this window.
+	// This prevents Bluecat timeouts when multiple ACME DNS-01 challenges are
+	// being solved concurrently.
+	//
+	// Accepts a Go duration string, e.g. "10s", "30s". Defaults to 10 seconds
+	// when unset. Set to "-1" to disable automatic deployment entirely.
+	DeployDelay caddy.Duration `json:"deploy_delay,omitempty"`
 
 	provider *bluecat.Provider
 }
@@ -54,11 +64,12 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 
 	// Initialize the embedded provider with the configuration
 	p.provider = &bluecat.Provider{
-		ServerURL:         p.ServerURL,
-		Username:          p.Username,
-		Password:          p.Password,
-		ConfigurationName: p.ConfigurationName,
-		ViewName:          p.ViewName,
+		ServerURL:             p.ServerURL,
+		Username:              p.Username,
+		Password:              p.Password,
+		ConfigurationName:     p.ConfigurationName,
+		ViewName:              p.ViewName,
+		DeploymentBatchWindow: time.Duration(p.DeployDelay),
 	}
 
 	logger.Info("Bluecat DNS provider provisioned")
@@ -74,6 +85,7 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 //	    password <password>
 //	    configuration_name <name>  // optional
 //	    view_name <name>           // optional
+//	    deploy_delay <duration>    // optional, e.g. "10s" (default), "30s"
 //	}
 func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	for d.Next() {
@@ -113,6 +125,17 @@ func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			case "view_name":
 				if d.NextArg() {
 					p.ViewName = d.Val()
+				}
+				if d.NextArg() {
+					return d.ArgErr()
+				}
+			case "deploy_delay":
+				if d.NextArg() {
+					dur, err := caddy.ParseDuration(d.Val())
+					if err != nil {
+						return d.Errf("invalid deploy_delay duration %q: %v", d.Val(), err)
+					}
+					p.DeployDelay = caddy.Duration(dur)
 				}
 				if d.NextArg() {
 					return d.ArgErr()
@@ -165,7 +188,7 @@ func convertToConcreteType(rec libdns.Record) libdns.Record {
 	// Note: libdns.RR doesn't have ProviderData field, so we can't preserve it
 	// This is a limitation of how certmagic stores/returns records
 	rr := rec.RR()
-	
+
 	switch rr.Type {
 	case "TXT":
 		return libdns.TXT{

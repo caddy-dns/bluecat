@@ -3,6 +3,7 @@ package bluecat
 import (
 	"testing"
 
+	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 )
 
@@ -63,6 +64,7 @@ func TestUnmarshalCaddyfile(t *testing.T) {
 				password secret
 				configuration_name MyConfig
 				view_name MyView
+				deploy_delay 5s
 			}`,
 			shouldErr: false,
 		},
@@ -101,6 +103,7 @@ func TestUnmarshalCaddyfileValues(t *testing.T) {
 		password testpass
 		configuration_name TestConfig
 		view_name TestView
+		deploy_delay 5s
 	}`
 
 	dispenser := caddyfile.NewTestDispenser(config)
@@ -125,5 +128,49 @@ func TestUnmarshalCaddyfileValues(t *testing.T) {
 	}
 	if p.ViewName != "TestView" {
 		t.Errorf("Expected ViewName to be 'TestView', got '%s'", p.ViewName)
+	}
+	if p.DeployDelay != caddy.Duration(5e9) {
+		t.Errorf("Expected DeployDelay to be 5s, got %v", p.DeployDelay)
+	}
+}
+
+func TestDeployDelayParsing(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    string
+		shouldErr bool
+	}{
+		{name: "valid duration", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		deploy_delay 30s
+	}`, shouldErr: false},
+		{name: "disable deploy", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		deploy_delay -1
+	}`, shouldErr: false},
+		{name: "invalid duration", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		deploy_delay later
+	}`, shouldErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispenser := caddyfile.NewTestDispenser(tt.config)
+			p := Provider{}
+			err := p.UnmarshalCaddyfile(dispenser)
+			if tt.shouldErr && err == nil {
+				t.Error("expected error but got none")
+			}
+			if !tt.shouldErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
 	}
 }

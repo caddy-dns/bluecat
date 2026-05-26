@@ -11,6 +11,8 @@
 		# Optional: specify configuration and view names
 		# configuration_name {env.BLUECAT_CONFIGURATION_NAME}
 		# view_name {env.BLUECAT_VIEW_NAME}
+		# Optional: debounce delay before QuickDeploy (default 10s; set -1 to disable)
+		# deploy_delay 10s
 	}
 }
 
@@ -31,6 +33,7 @@ example.com {
 			server_url {env.BLUECAT_SERVER_URL}
 			username {env.BLUECAT_USERNAME}
 			password {env.BLUECAT_PASSWORD}
+			deploy_delay 10s
 		}
 	}
 	
