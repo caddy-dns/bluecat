@@ -131,16 +131,11 @@ func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				}
 			case "deploy_delay":
 				if d.NextArg() {
-					val := d.Val()
-					if val == "-1" {
-						p.DeployDelay = -1
-					} else {
-						dur, err := caddy.ParseDuration(val)
-						if err != nil {
-							return d.Errf("invalid deploy_delay duration %q: %v", val, err)
-						}
-						p.DeployDelay = caddy.Duration(dur)
+					dur, err := caddy.ParseDuration(d.Val())
+					if err != nil {
+						return d.Errf("invalid deploy_delay duration %q: %v", d.Val(), err)
 					}
+					p.DeployDelay = caddy.Duration(dur)
 				}
 				if d.NextArg() {
 					return d.ArgErr()
