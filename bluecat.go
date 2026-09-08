@@ -64,12 +64,12 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 
 	// Initialize the embedded provider with the configuration
 	p.provider = &bluecat.Provider{
-		ServerURL:             p.ServerURL,
-		Username:              p.Username,
-		Password:              p.Password,
-		ConfigurationName:     p.ConfigurationName,
-		ViewName:              p.ViewName,
-		DeploymentBatchWindow: time.Duration(p.DeployDelay),
+		ServerURL:         p.ServerURL,
+		Username:          p.Username,
+		Password:          p.Password,
+		ConfigurationName: p.ConfigurationName,
+		ViewName:          p.ViewName,
+		DeployDelay:       time.Duration(p.DeployDelay),
 	}
 
 	logger.Info("Bluecat DNS provider provisioned")
