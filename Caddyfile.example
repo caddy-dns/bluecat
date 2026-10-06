@@ -8,11 +8,15 @@
 		server_url {env.BLUECAT_SERVER_URL}
 		username {env.BLUECAT_USERNAME}
 		password {env.BLUECAT_PASSWORD}
-		# Optional: specify configuration and view names
-		# configuration_name {env.BLUECAT_CONFIGURATION_NAME}
+		# Optional: limit zone lookups to one DNS view
 		# view_name {env.BLUECAT_VIEW_NAME}
-		# Optional: debounce delay before QuickDeploy (default 10s; set -1 to disable)
-		# deploy_delay 10s
+		# Optional: debounce delay before QuickDeploy (default 5s)
+		# deploy_delay 5s
+		# Optional: cap on how long debouncing can postpone a deploy
+		# (default max(4 x deploy_delay, 30s))
+		# max_deploy_delay 30s
+		# Optional: never QuickDeploy
+		# disable_deploy
 	}
 }
 
@@ -33,7 +37,7 @@ example.com {
 			server_url {env.BLUECAT_SERVER_URL}
 			username {env.BLUECAT_USERNAME}
 			password {env.BLUECAT_PASSWORD}
-			deploy_delay 10s
+			deploy_delay 5s
 		}
 	}
 	

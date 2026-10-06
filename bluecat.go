@@ -2,7 +2,6 @@ package bluecat
 
 import (
 	"context"
-	"net/netip"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -19,19 +18,27 @@ type Provider struct {
 	Username string `json:"username,omitempty"`
 	// Password is the API password
 	Password string `json:"password,omitempty"`
-	// ConfigurationName is the name of the configuration to use
+	// ConfigurationName is accepted for compatibility but not currently
+	// applied to zone lookups by libdns/bluecat. A zone name that matches
+	// more than one zone fails with an ambiguity error instead of guessing.
 	ConfigurationName string `json:"configuration_name,omitempty"`
-	// ViewName is the name of the view to use
+	// ViewName limits zone lookups to one DNS view (optional)
 	ViewName string `json:"view_name,omitempty"`
 	// DeployDelay controls how long to wait after the last DNS record write
-	// before issuing a QuickDeploy to Bluecat. Writes are debounced per zone —
-	// the deploy fires only once no new writes arrive within this window.
-	// This prevents Bluecat timeouts when multiple ACME DNS-01 challenges are
-	// being solved concurrently.
+	// before issuing a QuickDeploy to Bluecat. Writes are debounced per zone,
+	// so concurrent ACME DNS-01 challenges collapse into a single deploy.
 	//
-	// Accepts a Go duration string, e.g. "10s", "30s". Defaults to 10 seconds
-	// when unset. Set to "-1" to disable automatic deployment entirely.
+	// Accepts a Go duration string, e.g. "5s", "30s". Defaults to 5 seconds
+	// when unset. A negative value ("-1" in the Caddyfile) is a legacy alias
+	// for DisableDeploy.
 	DeployDelay caddy.Duration `json:"deploy_delay,omitempty"`
+	// MaxDeployDelay caps how long debouncing can postpone a deploy, so a
+	// steady stream of writes during bulk issuance can't delay it forever.
+	// Defaults to four times DeployDelay or 30 seconds, whichever is larger.
+	MaxDeployDelay caddy.Duration `json:"max_deploy_delay,omitempty"`
+	// DisableDeploy suppresses automatic deployment entirely. Records are
+	// written to Bluecat but not pushed to the DNS servers.
+	DisableDeploy bool `json:"disable_deploy,omitempty"`
 
 	provider *bluecat.Provider
 }
@@ -63,18 +70,35 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 	p.ViewName = repl.ReplaceAll(p.ViewName, "")
 
 	// Initialize the embedded provider with the configuration
-	p.provider = &bluecat.Provider{
+	p.provider = newBluecatProvider(p)
+	p.provider.Logger = ctx.Slogger()
+
+	logger.Info("Bluecat DNS provider provisioned")
+
+	return nil
+}
+
+// newBluecatProvider builds the libdns provider from the module config.
+// libdns/bluecat treats a negative DeployDelay as "use the default", not
+// "disable", so the legacy -1 sentinel is translated to DisableDeploy here.
+func newBluecatProvider(p *Provider) *bluecat.Provider {
+	deployDelay := time.Duration(p.DeployDelay)
+	disableDeploy := p.DisableDeploy
+	if deployDelay < 0 {
+		deployDelay = 0
+		disableDeploy = true
+	}
+
+	return &bluecat.Provider{
 		ServerURL:         p.ServerURL,
 		Username:          p.Username,
 		Password:          p.Password,
 		ConfigurationName: p.ConfigurationName,
 		ViewName:          p.ViewName,
-		DeployDelay:       time.Duration(p.DeployDelay),
+		DeployDelay:       deployDelay,
+		MaxDeployDelay:    time.Duration(p.MaxDeployDelay),
+		DisableDeploy:     disableDeploy,
 	}
-
-	logger.Info("Bluecat DNS provider provisioned")
-
-	return nil
 }
 
 // UnmarshalCaddyfile sets up the DNS provider from Caddyfile tokens. Syntax:
@@ -85,7 +109,9 @@ func (p *Provider) Provision(ctx caddy.Context) error {
 //	    password <password>
 //	    configuration_name <name>  // optional
 //	    view_name <name>           // optional
-//	    deploy_delay <duration>    // optional, e.g. "10s" (default), "30s"
+//	    deploy_delay <duration>    // optional, e.g. "5s" (default), "30s"
+//	    max_deploy_delay <duration> // optional, default max(4*deploy_delay, 30s)
+//	    disable_deploy             // optional, never QuickDeploy
 //	}
 func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	for d.Next() {
@@ -145,6 +171,23 @@ func (p *Provider) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if d.NextArg() {
 					return d.ArgErr()
 				}
+			case "max_deploy_delay":
+				if !d.NextArg() {
+					return d.ArgErr()
+				}
+				dur, err := caddy.ParseDuration(d.Val())
+				if err != nil {
+					return d.Errf("invalid max_deploy_delay duration %q: %v", d.Val(), err)
+				}
+				p.MaxDeployDelay = caddy.Duration(dur)
+				if d.NextArg() {
+					return d.ArgErr()
+				}
+			case "disable_deploy":
+				p.DisableDeploy = true
+				if d.NextArg() {
+					return d.ArgErr()
+				}
 			default:
 				return d.Errf("unrecognized subdirective '%s'", d.Val())
 			}
@@ -171,55 +214,7 @@ func (p *Provider) GetRecords(ctx context.Context, zone string) ([]libdns.Record
 
 // AppendRecords adds records to the zone. It returns the records that were added.
 func (p *Provider) AppendRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
-	// Convert generic libdns.Record to concrete types for proper handling by libdns/bluecat
-	converted := make([]libdns.Record, len(records))
-	for i, rec := range records {
-		converted[i] = convertToConcreteType(rec)
-	}
-	return p.provider.AppendRecords(ctx, zone, converted)
-}
-
-// convertToConcreteType converts a generic libdns.Record to its concrete type
-// based on the Type field. This is necessary because certmagic creates generic
-// Record structs, but libdns/bluecat needs concrete types for proper type switching.
-func convertToConcreteType(rec libdns.Record) libdns.Record {
-	// If it's already a concrete type, return as-is to preserve ProviderData
-	switch r := rec.(type) {
-	case libdns.TXT, libdns.Address, libdns.CNAME, libdns.MX, libdns.NS, libdns.SRV:
-		return r
-	}
-
-	// Otherwise, convert based on the Type field
-	// Note: libdns.RR doesn't have ProviderData field, so we can't preserve it
-	// This is a limitation of how certmagic stores/returns records
-	rr := rec.RR()
-
-	switch rr.Type {
-	case "TXT":
-		return libdns.TXT{
-			Name: rr.Name,
-			TTL:  rr.TTL,
-			Text: rr.Data,
-		}
-	case "A", "AAAA":
-		// Parse IP address from Data field
-		if ip, err := netip.ParseAddr(rr.Data); err == nil {
-			return libdns.Address{
-				Name: rr.Name,
-				TTL:  rr.TTL,
-				IP:   ip,
-			}
-		}
-	case "CNAME":
-		return libdns.CNAME{
-			Name:   rr.Name,
-			TTL:    rr.TTL,
-			Target: rr.Data,
-		}
-	}
-
-	// Return original if we can't convert
-	return rec
+	return p.provider.AppendRecords(ctx, zone, records)
 }
 
 // SetRecords sets the records in the zone, either by updating existing records or creating new ones.
