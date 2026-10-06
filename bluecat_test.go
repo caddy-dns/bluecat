@@ -2,6 +2,7 @@ package bluecat
 
 import (
 	"testing"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
@@ -158,6 +159,36 @@ func TestDeployDelayParsing(t *testing.T) {
 		password p
 		deploy_delay later
 	}`, shouldErr: true},
+		{name: "max deploy delay", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		max_deploy_delay 1m
+	}`, shouldErr: false},
+		{name: "max deploy delay missing value", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		max_deploy_delay
+	}`, shouldErr: true},
+		{name: "invalid max deploy delay", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		max_deploy_delay soon
+	}`, shouldErr: true},
+		{name: "disable deploy flag", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		disable_deploy
+	}`, shouldErr: false},
+		{name: "disable deploy takes no argument", config: `bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		disable_deploy yes
+	}`, shouldErr: true},
 	}
 
 	for _, tt := range tests {
@@ -170,6 +201,60 @@ func TestDeployDelayParsing(t *testing.T) {
 			}
 			if !tt.shouldErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// TestNewBluecatProvider checks the module config reaches libdns/bluecat with
+// the right deploy settings. In particular, the legacy "deploy_delay -1" must
+// disable deploys: libdns/bluecat itself treats a negative delay as "use the
+// default", which would silently turn deploys back on.
+func TestNewBluecatProvider(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      string
+		wantDelay   time.Duration
+		wantMax     time.Duration
+		wantDisable bool
+	}{
+		{name: "defaults", config: ``},
+		{name: "explicit delays", config: `
+		deploy_delay 10s
+		max_deploy_delay 1m`, wantDelay: 10 * time.Second, wantMax: time.Minute},
+		{name: "disable_deploy", config: `
+		disable_deploy`, wantDisable: true},
+		{name: "legacy -1 disables deploys", config: `
+		deploy_delay -1`, wantDisable: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dispenser := caddyfile.NewTestDispenser(`bluecat {
+		server_url https://bluecat.example.com
+		username u
+		password p
+		configuration_name C
+		view_name V` + tt.config + `
+	}`)
+			p := Provider{}
+			if err := p.UnmarshalCaddyfile(dispenser); err != nil {
+				t.Fatalf("UnmarshalCaddyfile: %v", err)
+			}
+
+			bp := newBluecatProvider(&p)
+			if bp.DeployDelay != tt.wantDelay {
+				t.Errorf("DeployDelay = %v, want %v", bp.DeployDelay, tt.wantDelay)
+			}
+			if bp.MaxDeployDelay != tt.wantMax {
+				t.Errorf("MaxDeployDelay = %v, want %v", bp.MaxDeployDelay, tt.wantMax)
+			}
+			if bp.DisableDeploy != tt.wantDisable {
+				t.Errorf("DisableDeploy = %v, want %v", bp.DisableDeploy, tt.wantDisable)
+			}
+			if bp.ServerURL != "https://bluecat.example.com" || bp.Username != "u" || bp.Password != "p" ||
+				bp.ConfigurationName != "C" || bp.ViewName != "V" {
+				t.Errorf("connection settings not passed through: %+v", bp)
 			}
 		})
 	}
