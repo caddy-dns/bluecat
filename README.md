@@ -25,7 +25,7 @@ To use this module for the ACME DNS challenge, [configure the ACME issuer in you
 				"password": "{env.BLUECAT_PASSWORD}",
 				"configuration_name": "{env.BLUECAT_CONFIGURATION_NAME}",
 				"view_name": "{env.BLUECAT_VIEW_NAME}",
-				"deploy_delay: "5s"
+				"deploy_delay": "5s"
 			}
 		}
 	}
@@ -69,8 +69,10 @@ tls {
 - **server_url** (required): The base URL of your Bluecat Address Manager server (e.g., `https://bluecat.example.com`)
 - **username** (required): Username for authenticating with the Bluecat API
 - **password** (required): Password for authenticating with the Bluecat API
-- **configuration_name** (optional): Bluecat configuration name (defaults to first available)
-- **view_name** (optional): Bluecat view name (defaults to first available)
-- **deploy_delay_** (optional): Caddy duration string used to batch same-zone quick deploys before one Bluecat deploy is sent, for example `5s`
+- **configuration_name** (optional): Accepted but not currently applied to zone lookups. If a zone name matches more than one zone, the lookup fails with an ambiguity error instead of picking one
+- **view_name** (optional): Limits zone lookups to one Bluecat DNS view. Set it if the same zone exists in more than one view
+- **deploy_delay** (optional): How long to wait after the last record write before one QuickDeploy is sent for the zone, so concurrent challenges share a deploy. Default `5s`. `-1` is a legacy alias for `disable_deploy`
+- **max_deploy_delay** (optional): Upper bound on how long debouncing can postpone a deploy during a steady stream of writes. Default is four times `deploy_delay` or `30s`, whichever is larger
+- **disable_deploy** (optional, no value): Never QuickDeploy. Records are written to Bluecat but not pushed to the DNS servers
 
 If you'd rather directly add the config items you can forgo the .env file.

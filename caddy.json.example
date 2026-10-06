@@ -39,7 +39,7 @@
 											"password": "{env.BLUECAT_PASSWORD}",
 											"configuration_name": "{env.BLUECAT_CONFIGURATION_NAME}",
 											"view_name": "{env.BLUECAT_VIEW_NAME}",
-											"deploy_delay": "10s"
+											"deploy_delay": "5s"
 										}
 									}
 								}
